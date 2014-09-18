@@ -1,14 +1,14 @@
 all:
 	i686-elf-as boot.s -o boot.o
 	i686-elf-gcc -c *.c -std=gnu99 -ffreestanding -O2 -Wall -Wextra
-	i686-elf-gcc -T linker.ld -o narf.bin -ffreestanding -O2 -nostdlib boot.o kernel.o memory.o string.o video.o math.o -lgcc
+	i686-elf-gcc -T linker.ld -o narf.bin -ffreestanding -O2 -nostdlib boot.o kernel.o memory.o string.o video.o math.o rand.o portio.o clife.o stdlib.o -lgcc
 
 install: all
 	cp narf.bin isodir/boot/narf.bin
 	grub2-mkrescue -o narf.iso isodir
 
 run: install
-	qemu-system-x86_64 narf.iso
+	qemu-system-x86_64 -vga std narf.iso
 
 clean:
 	rm *.o

@@ -3,8 +3,12 @@
 #define PI 3.14159
 #define TRIG_PRECISION 10
 
-double sin(double x);
+#define min(a,b) a < b ? a : b
+#define max(a,b) a > b ? a : b
 
-double cos(double y);
+double wrap_radians(double x);
+double sin(double x);
+double cos(double x);
+int sqrt(int x);
 
 #endif

@@ -11,4 +11,10 @@ void
 size_t
 strlen (const char *s);
 
+char
+*strchr(char *s, int c);
+
+char
+*strcpy (char *dst, const char *src);
+
 #endif

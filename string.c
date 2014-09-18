@@ -1,11 +1,30 @@
 #include "string.h"
 
+char
+*strchr(char *s, int c)
+{
+	while(*s) {
+		if(*s == c)
+			return s;
+		s++;
+	}
+	return 0;
+}
+
+char
+*strcpy (char *dst, const char *src)
+{
+	unsigned int i=0;
+	while((dst[i++] = src[i++]));
+	return dst;
+}
+
 void
 *memcpy (void *dst, const void *src, size_t size)
 {
 	unsigned char* b_dst = (unsigned char*)dst;
 	unsigned char* b_src = (unsigned char*)src;
-	//bytes to align source pointer
+	
 	while (size && ((unsigned int)b_src & 0x3) != 0) {
 		*b_dst++ = *b_src++;
 		size--;
@@ -18,7 +37,6 @@ void
 		size -= 4;
 	}
 
-	// Copy trailing bytes
 	if (size > 0) {
 		b_dst = (unsigned char*)w_dst;
 		b_src = (unsigned char*)w_src;
@@ -48,4 +66,3 @@ strlen (const char *s)
 		c++;
 	return c;
 }
-

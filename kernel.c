@@ -1,175 +1,205 @@
-#include <stdbool.h> /* C doesn't have booleans by default. */
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#include "portio.h"
 #include "memory.h"
 #include "math.h"
 #include "video.h"
 #include "string.h"
+#include "rand.h"
+#include "clife.h"
 
-/* Check if the compiler thinks if we are targeting the wrong operating system. */
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
-/* This tutorial will only work for the 32-bit ix86 targets. */
+
 #if !defined(__i386__)
-#error "This tutorial needs to be compiled with a ix86-elf compiler"
+#error "This needs to be compiled with a ix86-elf compiler"
 #endif
 
-unsigned char g_640x480x16[] =
-{
-/* MISC */
-    0xE3,
-/* SEQ */
-    0x03, 0x01, 0x08, 0x00, 0x06,
-/* CRTC */
-    0x5F, 0x4F, 0x50, 0x82, 0x54, 0x80, 0x0B, 0x3E,
-    0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0xEA, 0x0C, 0xDF, 0x28, 0x00, 0xE7, 0x04, 0xE3,
-    0xFF,
-/* GC */
-    0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x05, 0x0F,
-    0xFF,
-/* AC */
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07,
-    0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
-    0x01, 0x00, 0x0F, 0x00, 0x00
-};
-
-unsigned char g_320x200x256[] =
-{
-/* MISC */
-    0x63,
-/* SEQ */
-    0x03, 0x01, 0x0F, 0x00, 0x0E,
-/* CRTC */
-    0x5F, 0x4F, 0x50, 0x82, 0x54, 0x80, 0xBF, 0x1F,
-    0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x9C, 0x0E, 0x8F, 0x28, 0x40, 0x96, 0xB9, 0xA3,
-    0xFF,
-/* GC */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0F,
-    0xFF,
-/* AC */
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-    0x41, 0x00, 0x0F, 0x00, 0x00
-};
-
-unsigned char in(unsigned short _port)
-{
-	unsigned char result;
-	__asm__ ("in %%dx, %%al" : "=a" (result) : "d" (_port));
-	return result;
-}
-
-void out(unsigned short _port, unsigned char _data)
-{
-	__asm__ ("out %%al, %%dx" : : "a" (_data), "d" (_port));
-}
+// #define MODE VGA_320x200x256
+#define MODE VGA_640x480x16
 
 void memory_initialize()
 {
 	unsigned int end;
-	asm("movl %%esp,%0" : "=r"(end));
+	__asm__("movl %%esp,%0" : "=r"(end));
 	unsigned int page_aligned_end = ((unsigned int)end & 0xFFFFF000) + 0x1000;
 	next_address = (unsigned int*)page_aligned_end;
 }
 
-void write_regs(unsigned char *regs)
+void draw_life (void)
 {
-	unsigned i;
+    int i, j, l, k;
+    for (i=0;i<board.h;i++)
+    	for (j=0;j<board.w;j++)
+    		if (get_bit(j, i, &board))
+				//for (l=0;l<2;l++)
+					//for(k=0;k<2;k++)
+    					putpixel(j*2, i*2, 15-count_neighbors(j, i, &board));
 
-/* write MISCELLANEOUS reg */
-	out(VGA_MISC_WRITE, *regs);
-	regs++;
-/* write SEQUENCER regs */
-	for(i = 0; i < VGA_NUM_SEQ_REGS; i++) {
-		out(VGA_SEQ_INDEX, i);
-		out(VGA_SEQ_DATA, *regs);
-		regs++;
-	}
-/* unlock CRTC registers */
-	out(VGA_CRTC_INDEX, 0x03);
-	out(VGA_CRTC_DATA, in(VGA_CRTC_DATA) | 0x80);
-	out(VGA_CRTC_INDEX, 0x11);
-	out(VGA_CRTC_DATA, in(VGA_CRTC_DATA) & ~0x80);
-/* make sure they remain unlocked */
-	regs[0x03] |= 0x80;
-	regs[0x11] &= ~0x80;
-/* write CRTC regs */
-	for (i = 0; i < VGA_NUM_CRTC_REGS; i++) {
-		out(VGA_CRTC_INDEX, i);
-		out(VGA_CRTC_DATA, *regs);
-		regs++;
-	}
-/* write GRAPHICS CONTROLLER regs */
-	for (i = 0; i < VGA_NUM_GC_REGS; i++) {
-		out(VGA_GC_INDEX, i);
-		out(VGA_GC_DATA, *regs);
-		regs++;
-	}
-/* write ATTRIBUTE CONTROLLER regs */
-	for (i = 0; i < VGA_NUM_AC_REGS; i++) {
-		in(VGA_INSTAT_READ);
-		out(VGA_AC_INDEX, i);
-		out(VGA_AC_WRITE, *regs);
-		regs++;
-	}
-/* lock 16-color palette and unblank display */
-	in(VGA_INSTAT_READ);
-	out(VGA_AC_INDEX, 0x20);
 }
 
-void init_vga(void)
+void plasma (double tick)
 {
-	g_video.w = g_video_buffer.w = 320;
-	g_video.h = g_video_buffer.h = 200;
-	g_video.memory = (void*)0xA0000;
- 	g_video_buffer.memory = malloc(g_video.w*g_video.h);
-	write_regs((unsigned char*)g_320x200x256);
-	/* clear screen */
-	memset((void*)g_video.memory, 0, g_video_buffer.w*g_video_buffer.h);
+    int color;
+    double i = 0;
+    double v, x, y, cx, cy;
+    for(i=0;i<640*480;i++) {
+        x = (int)i%640;
+        y = (int)i/640;
+        cx = 80 + 6*sin(x/(4.0*PI*2)*sin(tick));
+        cy = 80 + 6*sin(y/(3.0*PI*2)*sin(tick));
+        v = cx+cy;
+        color = (int)(sin(sqrt(1000*((int)v)))*5)%5;
+        if(color) {
+        	g_video_buffer.memory[(int)y*640+(int)x] = color;
+        }
+    }
 }
 
-void loop_circle(void)
+void loop_circle(double tick)
 {
 	double i = 0;
-	int dir = 1;
-	int color = 1;
-	double tick = 0;
-	for(;color;i=-PI*2) {
-		clear_screen();
-		tick+=.01;
-		if (tick>PI*2) {
-			dir *=-1;
-			tick=-PI*2;
+	int j;
+	while (i < PI*2) {
+		putpixel((int)(cos(i)*80.0*sin(tick))+g_video.w/2, (int)(sin(i)*80.0)+g_video.h/2, COLOR_RED);
+		putpixel((int)(cos(i+tick*2)*40.0)+g_video.w/2, (int)(sin(i*3)*20.0)+g_video.h/2, COLOR_BROWN);
+		i += .01;
+	}
+}
+
+void shift_up(void)
+{
+	//get the last line
+	uint8_t buf[4096] = {0};
+	unsigned int dw = get_aligned_width(&board)/8;
+	memcpy(buf, board.data, dw);
+	// shift up
+	memcpy(board.data, board.data+dw, get_board_size(&board)-dw);
+	// copt last line back
+	memcpy(board.data+get_board_size(&board)-dw, buf, dw);
+}
+
+void update_ball(int *_x, int *_y, int *_dir)
+{
+	int x = *_x;
+	int y = *_y;
+	int dir = *_dir;
+	if (x>=g_video.w && (dir == 0 || dir == 3))
+		dir=(dir+2)%4;
+	if (y<=0 && (dir == 0 || dir == 2))
+		dir=(dir+3)%4;
+	if (y>=g_video.h && (dir == 1 || dir == 3))
+		dir=(dir+1)%4;
+	if (x<=0 && (dir == 1 || dir == 2))
+		dir=(dir+2)%4;
+
+	if (dir==0 || dir==3)
+		x++;
+	else
+		x--;
+
+	if (dir==0 || dir==2)
+		y--;
+	else
+		y++;
+	*_dir = dir;
+	*_y = y;
+	*_x = x;
+}
+
+draw_ball(int x, int y)
+{
+	int i, j;
+	for (i=0;i<10;i++)
+		for(j=0;j<10;j++)
+			putpixel(x+j-5, y+i-5, 2);
+}
+
+int cur_x = 0;
+int cur_y = 0;
+void put_char (unsigned char c, int color)
+{
+	if (c == '\n') {
+		cur_y++;
+		cur_x = 0;
+	} else {
+		draw_char(cur_x*9, cur_y*16, c, color);
+    	cur_x += 1;
+    }
+    if (cur_x*9 > g_video.w) {
+    	cur_y++;
+    	cur_x = 0;
+    }
+    if (cur_y*16 > g_video.h) {
+    	cur_y = 0;
+    	cur_x = 0;
+    }
+}
+
+void put_str (char *s, int color)
+{
+	while (*s) {
+		put_char(*s++, color);
+	}
+}
+
+void loop_life(void)
+{
+	init_life(NULL);
+	//create_board(g_video.w, g_video.h, &board);
+    //resize_life(g_video.w, g_video.w);
+	//randomize_life();
+	//step_life();
+	//draw_life();
+	double tick = 2;
+	int shiftc = 0;
+	int ballx = 4;
+	int bally = 4;
+	int balldir = 0;
+	char buf[255] = {0};
+	plasma(tick);
+	for (;;) {
+		//tick+=.1;
+		//if (tick>PI*2)
+		//	tick=-PI*2;
+		//if(!(shiftc++ % 12))
+			//shift_up();
+		//update_ball(&ballx, &bally, &balldir);
+		//plasma(tick);
+		tick += .01;
+		if(!(shiftc++ % 3)) {
+			//step_life();
+			//clear_screen();
+			// //draw_life();
+			// draw_ball(ballx, bally);
+			// loop_circle(tick);
+			// cur_x = 0;
+			// cur_y = 0;
+			// put_str(">2015\n", COLOR_GREEN);
+			// put_str(">not working on demos\n", COLOR_GREEN);
+			// facebook_uint32_to_str(ballx, buf);
+			// put_str(buf, COLOR_WHITE);
+			// put_str(",", COLOR_WHITE);
+			// facebook_uint32_to_str(bally, buf);
+			// put_str(buf, COLOR_WHITE);
+			// put_str("\n", COLOR_WHITE);
 		}
-		while (i <= PI*2) {
-			color = color % 13 + 1;
-   			putpixel((int)(cos(tick-i)*60.5)+g_video.w/2, -(int)(sin(-i)*60.5)+g_video.h/2, COLOR_BROWN);
-   			putpixel((int)(cos(i*4+tick*2)*60.0)+g_video.w/2, (int)(sin(i*4)*60.0)+g_video.h/2, COLOR_RED);
-			putpixel((int)(sin(i+tick)*50.0)+g_video.w/2, i*(g_video.h/(PI*2)), color);
-   			putpixel(-(int)(sin(i+tick)*50.0)+g_video.w/2, i*(g_video.h/(PI*2)), color);
-			i += .01;
-		}
-		
 		swap_buffer();
 	}
 }
 
 void kernel_main()
 {
-	//terminal_initialize();
 	memory_initialize();
-	//char out[255] = "Switching to VBE mode.\0";
-	//terminal_writestring(out);	
-	init_vga();
-	loop_circle();
+	init_vga(MODE);
+	init_rand(145);
+	loop_life();
 }
 
 /*
-
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
 size_t terminal_row;

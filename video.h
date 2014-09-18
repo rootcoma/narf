@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define VBE_DISPI_IOPORT_INDEX 0x1CE
+#define VBE_DISPI_IOPORT_DATA 0x1CF
+
 #define VGA_NUM_SEQ_REGS    5
 #define VGA_NUM_CRTC_REGS   25
 #define VGA_NUM_GC_REGS     9
@@ -48,14 +51,23 @@ enum vga_color
     COLOR_WHITE = 15,
 };
 
+enum vga_mode
+{
+    VGA_320x200x256 = 320,
+    VGA_640x480x16 = 480
+};
+
 typedef struct video_t {
     uint8_t *memory;
     size_t w, h;
+    unsigned int mode;
 } video_t;
 
 void swap_buffer(void);
 void putpixel (int x, int y, int c);
 void clear_screen(void);
+void init_vga(int mode);
+void draw_char (int x, int y, unsigned char c, int color);
 
 struct video_t g_video_buffer;
 struct video_t g_video;

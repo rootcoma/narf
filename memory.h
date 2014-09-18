@@ -5,6 +5,6 @@
 void *malloc (size_t size);
 void free (void *ptr);
 
-static unsigned int *next_address;
+unsigned int *next_address;
 
 #endif
